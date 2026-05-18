@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Road SOS",
+    "slug": "road-sos",
+    "scheme": "roadsos",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Road SOS uses the camera to scan emergency medical QR IDs.",
+        "NSLocationWhenInUseUsageDescription": "Road SOS uses location to attach GPS coordinates to simulated emergency events.",
+        "NSMotionUsageDescription": "Road SOS reads motion sensors to calculate accident risk during ride monitoring."
+      }
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Road SOS uses the camera to scan emergency medical QR IDs."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Road SOS uses location to attach GPS coordinates to simulated emergency events."
+        }
+      ],
+      "expo-notifications"
+    ]
+  }
+}
