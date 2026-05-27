@@ -9,6 +9,7 @@ Road SOS is a hackathon MVP for automatic two-wheeler accident detection and sim
 - Rider emergency profile creation
 - Live ride monitoring with accelerometer, gyroscope, and GPS
 - Crash confidence scoring from a movement + impact + confirmation state machine
+- Optional ML motion-pattern classification through a hosted FastAPI backend
 - 30-second crash countdown before SOS escalation
 - Firestore accident event creation with AsyncStorage fallback
 - Responder dashboard with simulated ambulance workflow
@@ -21,6 +22,8 @@ Road SOS is a hackathon MVP for automatic two-wheeler accident detection and sim
 - Real gyroscope readings through `expo-sensors`
 - Real GPS/location through `expo-location`
 - Real crash confidence scoring in `src/lib/crashDetection.ts`
+- Real rolling-window feature extraction for the RandomForest model
+- Real FastAPI `/predict` integration when `EXPO_PUBLIC_ML_API_URL` is configured
 - Real QR generation through `react-native-qrcode-svg`
 - Real QR scanning through `expo-camera`
 - Real Firestore/local accident event creation
@@ -33,6 +36,7 @@ Road SOS is a hackathon MVP for automatic two-wheeler accident detection and sim
 - Traffic police corridor
 - Hospital capacity
 - ETA and traffic status
+- ML model reliability for real-world crashes
 
 ## Setup
 
@@ -49,6 +53,35 @@ Road SOS is a hackathon MVP for automatic two-wheeler accident detection and sim
    ```
 
 3. Open in Expo Go or a development build on a real phone. Sensors and camera are best tested on-device.
+
+## ML Backend Deployment
+
+The RandomForest model is a Python pickle/joblib model, so the Expo app does not load it directly. Deploy the FastAPI backend to Render and point the app at the hosted URL.
+
+This repo includes a root `render.yaml` configured for Render:
+
+- Root Directory: `ml-backend`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- Health Check Path: `/health`
+- Python Runtime: `python-3.11.9`
+
+Render should expose:
+
+- `GET /health`
+- `POST /predict`
+
+Set the hosted backend URL in the Expo app `.env`:
+
+```bash
+EXPO_PUBLIC_ML_API_URL=https://your-road-sos-ml-backend.onrender.com
+```
+
+For the final hackathon demo, use the deployed Render URL, not `127.0.0.1`, `localhost`, or a laptop IP.
+
+The app sends rolling 2-5 second accelerometer/gyroscope features to `/predict`, then combines the ML result with GPS movement context, speed drop, post-impact stillness, and shake-pattern rejection. ML alone never starts SOS.
+
+If the hosted ML backend is offline, the app shows `ML backend offline - using rule fallback` and keeps using the rule-based crash detector without crashing.
 
 ## Firebase Env Setup
 
@@ -91,3 +124,9 @@ Firestore collections:
 - Hospital capacity systems
 - Traffic police corridor systems
 - Native Android/iOS background crash detection with production-grade battery handling
+
+## ML Safety Disclaimer
+
+MotionSense is a real iPhone accelerometer/gyroscope dataset, but it is mainly a human activity recognition dataset, not a real-world road crash dataset.
+
+The ML model improves sensor-pattern classification for the MVP, but real-world deployment would require training and validation on actual two-wheeler crash and near-crash data.

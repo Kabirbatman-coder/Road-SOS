@@ -4,3 +4,8 @@ node_modules/
 dist/
 build/
 .env
+/accident_model_real.pkl
+/run_me.py
+__pycache__/
+*.pyc
+ml-backend/venv/

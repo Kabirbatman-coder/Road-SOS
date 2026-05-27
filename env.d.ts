@@ -7,5 +7,6 @@ declare const process: {
     EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID?: string;
     EXPO_PUBLIC_FIREBASE_APP_ID?: string;
     EXPO_PUBLIC_GEMMA_API_KEY?: string;
+    EXPO_PUBLIC_ML_API_URL?: string;
   };
 };

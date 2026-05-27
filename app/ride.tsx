@@ -25,7 +25,17 @@ import {
   type MotionSample
 } from "@/src/lib/crashDetection";
 import { analyzeCrash } from "@/src/lib/gemma";
+import {
+  makeHybridCrashDecision,
+  type HybridCrashDecision
+} from "@/src/lib/hybridCrashDecision";
 import { getCurrentLocationSnapshot } from "@/src/lib/location";
+import { checkMlBackendHealth, predictAccident, type MlPredictionResult } from "@/src/lib/mlClient";
+import {
+  extractAccidentMlFeatures,
+  trimSensorSamples,
+  type RawSensorSample
+} from "@/src/lib/mlFeatureExtraction";
 import { requestMotionAndLocationPermissions } from "@/src/lib/permissions";
 import type { AppSettings, LocationSnapshot, SensorVector } from "@/src/types";
 
@@ -73,6 +83,13 @@ function createInitialResult(now = Date.now()): CrashDetectionResult {
   };
 }
 
+const initialHybridDecision: HybridCrashDecision = {
+  shouldStartCountdown: false,
+  finalDecision: "NORMAL",
+  reason: "Waiting for live sensor window",
+  reasons: ["Waiting for live sensor window"]
+};
+
 export default function RideScreen() {
   const [accelerometer, setAccelerometer] = useState<SensorVector>(emptyVector);
   const [gyroscope, setGyroscope] = useState<SensorVector>(emptyVector);
@@ -87,15 +104,34 @@ export default function RideScreen() {
   const [detectionResult, setDetectionResult] = useState<CrashDetectionResult>(() =>
     createInitialResult()
   );
+  const [mlConnected, setMlConnected] = useState(false);
+  const [mlPrediction, setMlPrediction] = useState<MlPredictionResult | null>(null);
+  const [hybridDecision, setHybridDecision] = useState<HybridCrashDecision>(initialHybridDecision);
 
   const previousSpeedRef = useRef<number | null>(null);
   const hasNavigatedRef = useRef(false);
   const crashReportRef = useRef("");
   const contextRef = useRef(createInitialCrashDetectionContext());
   const samplesRef = useRef<MotionSample[]>([]);
+  const rawSensorSamplesRef = useRef<RawSensorSample[]>([]);
+  const lastMlRequestAtRef = useRef(0);
+  const mlPredictionRef = useRef<MlPredictionResult | null>(null);
 
   useEffect(() => {
     getSettings().then(setSettings);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    checkMlBackendHealth().then((connected) => {
+      if (active) {
+        setMlConnected(connected);
+      }
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -203,6 +239,15 @@ export default function RideScreen() {
       gyroMagnitude,
       speedKmh: currentSpeedKmh
     };
+    const rawSample: RawSensorSample = {
+      timestamp: now,
+      accX: accelerometer.x,
+      accY: accelerometer.y,
+      accZ: accelerometer.z,
+      gyroX: gyroscope.x,
+      gyroY: gyroscope.y,
+      gyroZ: gyroscope.z
+    };
 
     const result = updateCrashDetectionState({
       accelerometer,
@@ -218,14 +263,41 @@ export default function RideScreen() {
     samplesRef.current = [...samplesRef.current, currentSample].filter(
       (sample) => now - sample.timestamp <= 10000
     );
+    rawSensorSamplesRef.current = trimSensorSamples([...rawSensorSamplesRef.current, rawSample], now, 5000);
     contextRef.current = result.context;
     setDetectionResult(result);
 
-    if (
-      monitoring &&
-      !hasNavigatedRef.current &&
-      shouldStartCountdown(result, settings.possibleCrashThreshold)
-    ) {
+    const predictionContext = {
+      gpsSpeedKmh: currentSpeedKmh,
+      wasMoving: result.hasMovedAbove10Kmh,
+      postImpactStillness: result.postImpactStillnessDetected,
+      suddenSpeedDrop: result.speedDropDetected
+    };
+
+    if (rawSensorSamplesRef.current.length >= 8 && now - lastMlRequestAtRef.current > 1500) {
+      lastMlRequestAtRef.current = now;
+      const features = extractAccidentMlFeatures(rawSensorSamplesRef.current);
+      predictAccident(features, predictionContext).then((prediction) => {
+        mlPredictionRef.current = prediction;
+        setMlPrediction(prediction);
+        setMlConnected(Boolean(prediction));
+      });
+    }
+
+    const nextHybridDecision = makeHybridCrashDecision({
+      mlPrediction: mlPredictionRef.current,
+      ruleScore: result.breakdown.crashConfidence,
+      gpsSpeedKmh: currentSpeedKmh,
+      wasMoving: result.hasMovedAbove10Kmh,
+      postImpactStillness: result.postImpactStillnessDetected,
+      suddenSpeedDrop: result.speedDropDetected,
+      shakePatternDetected: result.shakePatternDetected
+    });
+    setHybridDecision(nextHybridDecision);
+
+    const fallbackRuleDecision =
+      !mlPredictionRef.current && shouldStartCountdown(result, settings.possibleCrashThreshold);
+    if (monitoring && !hasNavigatedRef.current && (nextHybridDecision.shouldStartCountdown || fallbackRuleDecision)) {
       hasNavigatedRef.current = true;
       setMonitoring(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
@@ -292,6 +364,23 @@ export default function RideScreen() {
 
         <CrashScoreMeter score={breakdown.crashConfidence} riskLevel={breakdown.riskLevel} />
 
+        <Card title="ML Hybrid Decision">
+          <View style={styles.stateHeader}>
+            <StatusPill
+              label={mlConnected ? "ML Connected" : "ML backend offline - using rule fallback"}
+              tone={mlConnected ? "good" : "warning"}
+            />
+            <StatusPill label={hybridDecision.finalDecision.replaceAll("_", " ")} tone={hybridDecision.shouldStartCountdown ? "danger" : "info"} />
+          </View>
+          <View style={styles.signalGrid}>
+            <Signal label="ML prediction" value={mlPrediction ? mlPrediction.prediction : "unavailable"} />
+            <Signal label="ML probability" value={mlPrediction ? `${(mlPrediction.probability * 100).toFixed(0)}%` : "--"} />
+            <Signal label="Rule score" value={`${breakdown.crashConfidence}/100`} />
+            <Signal label="GPS context" value={detectionResult.hasMovedAbove10Kmh ? "Moving" : "Not moving"} />
+          </View>
+          <Text style={styles.hybridReason}>Final Decision: {hybridDecision.reason}</Text>
+        </Card>
+
         <Card title="Crash Detection State">
           <View style={styles.stateHeader}>
             <StatusPill label={detectionResult.state.replaceAll("_", " ")} tone={stateTone(detectionResult.state)} />
@@ -325,9 +414,15 @@ export default function RideScreen() {
               {reason}
             </Text>
           ))}
+          {hybridDecision.reasons.map((reason) => (
+            <Text key={`hybrid-${reason}`} style={styles.reason}>
+              {reason}
+            </Text>
+          ))}
           <Text style={styles.simNote}>
             Shaking and rotation alone are ignored. The detector waits for movement before impact plus a speed drop or
-            post-impact stillness before opening SOS countdown.
+            post-impact stillness before opening SOS countdown. ML improves motion-pattern filtering, but it cannot
+            trigger SOS by itself.
           </Text>
         </Card>
 
@@ -449,6 +544,13 @@ const styles = StyleSheet.create({
   },
   ignored: {
     color: theme.colors.amber,
+    fontSize: 14,
+    fontWeight: "900",
+    lineHeight: 21,
+    marginTop: 12
+  },
+  hybridReason: {
+    color: theme.colors.text,
     fontSize: 14,
     fontWeight: "900",
     lineHeight: 21,
