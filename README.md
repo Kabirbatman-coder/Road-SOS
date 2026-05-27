@@ -1,50 +1,179 @@
-# Road SOS
+# Road SOS 🚨
 
-Road SOS is a hackathon MVP for automatic two-wheeler accident detection and simulated emergency response. It is built with Expo React Native, TypeScript, Expo Router, Firebase Firestore support, live motion sensors, GPS location, and QR medical ID scanning.
+## AI-Powered Emergency Response System for Two-Wheeler Accidents
 
-> Road SOS MVP is for demonstration only and should not be relied on for real emergency response.
+Road SOS is a mobile emergency-response MVP built for two-wheeler accident situations where the rider may be unconscious or unable to call for help.
 
-## MVP Scope
+The system combines:
 
-- Rider emergency profile creation
-- Live ride monitoring with accelerometer, gyroscope, and GPS
-- Crash confidence scoring from a movement + impact + confirmation state machine
-- Optional ML motion-pattern classification through a hosted FastAPI backend
-- 30-second crash countdown before SOS escalation
-- Firestore accident event creation with AsyncStorage fallback
-- Responder dashboard with simulated ambulance workflow
-- QR medical ID generation and camera scanning
-- Mock nearest-hospital and emergency corridor planning for Bhopal
+1. **Auto SOS** — real sensor + ML-based crash detection  
+2. **Emergency Corridor** — route planning from responder location to accident site and hospital  
+3. **QR Medical ID** — emergency medical identity access for responders  
 
-## What Is Real
+The goal is simple:
 
-- Real accelerometer readings through `expo-sensors`
-- Real gyroscope readings through `expo-sensors`
-- Real GPS/location through `expo-location`
-- Real crash confidence scoring in `src/lib/crashDetection.ts`
-- Real rolling-window feature extraction for the RandomForest model
-- Real FastAPI `/predict` integration when `EXPO_PUBLIC_ML_API_URL` is configured
-- Real QR generation through `react-native-qrcode-svg`
-- Real QR scanning through `expo-camera`
-- Real Firestore/local accident event creation
+> Detect serious crashes automatically, trigger help when the rider cannot respond, and guide responders faster to the accident location and hospital.
 
-## What Is Simulated
+---
 
-- Ambulance dispatch
-- Emergency service calling
-- SMS/WhatsApp notifications
-- Traffic police corridor
-- Hospital capacity
-- ETA and traffic status
-- ML model reliability for real-world crashes
+## Problem
 
-## Setup
+Two-wheeler accidents become more dangerous when emergency help is delayed.
 
-1. Install dependencies:
+Common problems:
 
-   ```bash
-   npm install
-   ```
+- the rider may become unconscious
+- the rider may not be able to call an ambulance
+- family members may not be informed quickly
+- responders may not know the rider’s blood group or medical details
+- ambulances may get delayed in traffic
+- finding a suitable nearby hospital takes time
+- there is poor coordination between victim, responder, hospital, and emergency systems
+
+Road SOS tries to reduce this delay using a mobile-first emergency response system.
+
+---
+
+## Solution Overview
+
+Road SOS has three major modules.
+
+---
+
+## 1. Auto SOS
+
+Auto SOS automatically detects possible accidents using phone sensor data and ML-assisted motion analysis.
+
+The app uses:
+
+- accelerometer
+- gyroscope
+- GPS/location
+- crash confidence score
+- ML model prediction
+- rule-based crash logic
+- rider response countdown
+
+If the rider does not cancel the alert, the app creates an SOS emergency event.
+
+Flow:
+
+```text
+Ride starts
+↓
+Phone sensors activate
+↓
+Motion data is collected
+↓
+Features are sent to ML backend
+↓
+ML + rule logic decides crash risk
+↓
+Crash countdown starts
+↓
+Rider does not cancel
+↓
+Auto SOS triggers
+↓
+Emergency event is created
+2. Emergency Corridor
+
+Emergency Corridor helps responders navigate from their current location to the accident location and then to a hospital.
+
+The route is:
+
+Responder Current Location
+↓
+Accident Location
+↓
+Recommended Hospital
+
+The feature uses:
+
+actual accident GPS location from the SOS event
+responder’s current GPS location
+Google Maps / Routes / Places APIs if configured
+route ETA
+route distance
+nearby hospital discovery
+Google Maps direction links
+
+Important:
+
+Road SOS does not claim to have real ambulance fleet control, real traffic police signal control, or live hospital capacity unless those official integrations are added later.
+
+3. QR Medical ID
+
+QR Medical ID gives responders quick access to emergency medical information.
+
+It can show:
+
+rider name
+blood group
+allergies
+medical conditions
+emergency contact
+vehicle number
+insurance status
+
+Legal note:
+
+The QR should not be placed on the number plate or HSRP plate. It should be used as a separate emergency medical ID, such as on a helmet, keychain, emergency card, document holder, or approved emergency sticker.
+
+Tech Stack
+Mobile App
+Expo React Native
+TypeScript
+Expo Router
+expo-sensors
+expo-location
+expo-camera
+expo-notifications
+react-native-qrcode-svg
+Firebase Firestore
+Google Maps / Routes / Places APIs
+ML Backend
+Python
+FastAPI
+scikit-learn
+joblib
+NumPy
+Pandas
+Uvicorn
+Render deployment
+Database
+Firebase Firestore
+Local fallback mode if Firebase is unavailable
+Architecture
+Road SOS Mobile App
+    ↓
+Live Phone Sensors
+    - Accelerometer
+    - Gyroscope
+    - GPS
+    ↓
+Feature Extraction
+    ↓
+ML Backend
+    - Random Forest model
+    - Accident probability
+    - Risk level
+    ↓
+Hybrid Crash Decision
+    - ML prediction
+    - Rule score
+    - GPS context
+    - Post-impact checks
+    ↓
+SOS Countdown
+    ↓
+Emergency Event
+    ↓
+Responder Dashboard
+    ↓
+Emergency Corridor
+    ↓
+QR Medical ID   ```
 
 2. Start Expo:
 
@@ -83,25 +212,6 @@ The app sends rolling 2-5 second accelerometer/gyroscope features to `/predict`,
 
 If the hosted ML backend is offline, the app shows `ML backend offline - using rule fallback` and keeps using the rule-based crash detector without crashing.
 
-## Firebase Env Setup
-
-Create a local env file or configure these Expo public variables:
-
-```bash
-EXPO_PUBLIC_FIREBASE_API_KEY=...
-EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=...
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=...
-EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=...
-EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=...
-EXPO_PUBLIC_FIREBASE_APP_ID=...
-```
-
-If they are missing, the app does not crash. It shows `Firebase not configured - using local demo mode` and stores profiles/events in AsyncStorage.
-
-Firestore collections:
-
-- `profiles/{profileId}`
-- `accidentEvents/{eventId}`
 
 ## Demo Flow
 
